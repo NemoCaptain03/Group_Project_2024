@@ -34,10 +34,9 @@ def figure_answer(figure, question):
     Given a figure, return the answer to the specified question.
     If the answer is not found, default to 0.5 (neutral answer).
     """
-    if 'answers' in figure and question in figure['answers']:
+    if question in figure['answers']:
         return figure['answers'][question]
     return 0.5  # Default value if no answer is found
-
 
 
 def calculate_probabilities(questions_so_far, answers_so_far, figures):
