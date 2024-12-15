@@ -1,7 +1,8 @@
-import mysql.connector
-import openai
+import pymysql
+from transformers import pipeline
 
-openai.api_key = ""
+# Khởi tạo pipeline sử dụng mô hình GPT-2 từ Hugging Face
+question_generator = pipeline("text-generation", model="gpt2")  # Bạn có thể thay đổi mô hình nếu muốn
 
 # Define the simple traits and the formula-based questions
 SIMPLE_TRAITS = {
@@ -22,11 +23,16 @@ COMPLEX_TRAITS = ['Achievements', 'Spouses', 'ShortIntroduction', 'Works', 'Quot
 def get_db_connection():
     db_config = {
         'user': 'root',
-        'password': '',
+        'password': 'ducvandog900',
         'host': 'localhost',
         'database': 'historical_figures',
+        'charset': 'utf8mb4',
+        'cursorclass': pymysql.cursors.DictCursor  # Use DictCursor to return rows as dictionaries
     }
-    return mysql.connector.connect(**db_config)
+    return pymysql.connect(**db_config)
+
+
+print("ok database")
 
 
 def load_data():
@@ -78,22 +84,16 @@ def generate_simple_question(trait_type, trait_value):
 
 
 def generate_complex_question(figure_name, trait_type, trait_value):
-    """Generate a dynamic question for complex traits using ChatGPT."""
+    """Generate a dynamic question for complex traits using Hugging Face's GPT model."""
     prompt = f"Generate a yes/no question based on the following trait: {trait_type} = {trait_value}. The figure is {figure_name}. For example: Does this person have a notable achievement related to {trait_value}?"
 
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{
-                "role": "system",
-                "content": "You are a helpful assistant that generates yes/no questions for a Vietnamese historical akinator-like guessing game."
-            }, {
-                "role": "user",
-                "content": prompt
-            }]
-        )
-        return response['choices'][0]['message']['content'].strip()
-    except openai.error.OpenAIError as e:
+        # Generate the question using Hugging Face's pipeline
+        response = question_generator(prompt, max_length=100, num_return_sequences=1)[0]['generated_text']
+        # Process the response to extract the first question
+        question = response.strip().split('\n')[0]
+        return question
+    except Exception as e:
         print(f"Error generating question for {figure_name}: {e}")
         return "Could not generate a question at the moment."
 
