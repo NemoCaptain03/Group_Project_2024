@@ -57,6 +57,10 @@ def load_data():
     cursor.close()
     connection.close()
 
+    for figure in figures_dict:
+        if 'answers' not in figure:
+            figure['answers'] = {}  # Add an empty answers key
+
     return figures_dict
 
 
@@ -206,12 +210,15 @@ def update_probability(answer, current_probability):
 
 def update_figures_based_on_answer(figures, categories, question_column, answer):
     """Update the list of figures based on the user's answer."""
-    if answer in ['yes', 'probably yes']:
-        # Keep relevant figures
-        return [f for f in figures if f['answers'].get(str(question_column)) == 1]
-    else:
-        # Remove irrelevant figures
-        return [f for f in figures if f['answers'].get(str(question_column)) == 0]
+    expected_answer = 1 if answer in ['yes', 'probably yes'] else 0
+    updated_figures = []
+    for figure in figures:
+        # Default to 0.5 if answers key is missing or question_column is not found
+        figure_answer = figure.get('answers', {}).get(str(question_column), 0.5)
+        if figure_answer == expected_answer:
+            updated_figures.append(figure)
+    return updated_figures
+
 
 
 def partition_data(answers_so_far, dataset):
@@ -256,8 +263,8 @@ def check_prob(probabilities):
         highest_prob = probabilities[0]['probability']
         second_highest_prob = probabilities[1]['probability']
 
-        # If the highest probability is more than 60% or the difference is larger than 40%
-        if highest_prob >= 0.6 or (highest_prob - second_highest_prob) >= 0.4:
+        # Update thresholds for early guesses
+        if highest_prob >= 0.7 or (highest_prob - second_highest_prob) >= 0.4:
             return True
     return False
 
