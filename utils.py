@@ -1,42 +1,43 @@
+# utils.py
 import mysql.connector
 import openai
 
 openai.api_key = ""
 
-# Define the simple traits and the formula-based questions
-SIMPLE_TRAITS = {
-    'Gender': 'Was this person {noun}?',
-    'Field': 'Did this person contribute to {noun}?',
-    'Position': 'Did this person hold the position of {noun}?',
-    'Century': 'Did this person live in the {noun} century?',
-    'BirthYear': 'Was this person born in {noun}?',
-    'DeathYear': 'Did this person die in {noun}?',
-    'Nationality': 'Was this person from {noun}?'
-}
 
-# Define complex traits that require dynamic question generation
-COMPLEX_TRAITS = ['Achievements', 'Spouses', 'ShortIntroduction', 'Works', 'Quotes', 'Relationships']
-
-
-# Database connection (best practice: use context manager to manage DB connection)
+# Define database connection
 def get_db_connection():
+    """
+    Establish connection to the MySQL database.
+    """
     db_config = {
         'user': 'root',
-        'password': '',
+        'password': 'ducvandog900',
         'host': 'localhost',
-        'database': 'historical_figures',
+        'port': 3306,
+        'database': 'Historical_Figures',
+        'auth_plugin': 'mysql_native_password'
     }
-    return mysql.connector.connect(**db_config)
+    try:
+        connection = mysql.connector.connect(**db_config)
+        return connection
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None
 
 
 def load_data():
-    """Load historical figure data from the database."""
+    """
+    Load data from the database.
+    """
     connection = get_db_connection()
-    cursor = connection.cursor()
+    if not connection:
+        return []
 
+    cursor = connection.cursor(dictionary=True)
     query = """
-    SELECT hf.ID, hf.HistoricalFigures, hf.Gender, hf.RealName, hf.Hometown, hf.Nationality,
-           hf.PeriodOfActivity, hf.Century, hf.BirthYear, hf.DeathYear, hf.ShortIntroduction,
+    SELECT hf.ID, hf.HistoricalFigures, hf.Gender, hf.RealName, hf.Hometown,
+           hf.Nationality, hf.PeriodOfActivity, hf.Century, hf.BirthYear,
            GROUP_CONCAT(a.Achievement) AS Achievements,
            GROUP_CONCAT(s.Name) AS Spouses
     FROM HistoricalFigures hf
@@ -48,152 +49,57 @@ def load_data():
     cursor.execute(query)
     figures = cursor.fetchall()
 
-    headers = ['ID', 'HistoricalFigures', 'Gender', 'RealName', 'Hometown', 'Nationality',
-               'PeriodOfActivity', 'Century', 'BirthYear', 'DeathYear', 'ShortIntroduction',
-               'Achievements', 'Spouses']
-
-    figures_dict = [dict(zip(headers, row)) for row in figures]
+    # Replace NULL values with "Unknown"
+    for figure in figures:
+        for key in figure:
+            if figure[key] is None:
+                figure[key] = "Unknown"
 
     cursor.close()
     connection.close()
 
-    for figure in figures_dict:
-        if 'answers' not in figure:
-            figure['answers'] = {}  # Add an empty answers key
-
-    return figures_dict
+    return figures
 
 
-def generate_question(trait_type, trait_value, figure_name):
-    """Generate a question based on the trait type and value."""
-    if trait_type in SIMPLE_TRAITS:
-        return generate_simple_question(trait_type, trait_value)
-    elif trait_type in COMPLEX_TRAITS:
-        return generate_complex_question(figure_name, trait_type, trait_value)
-    return None
+def generate_question(trait, value):
+    """
+    Generate a question based on the trait and value using GPT if available.
+    """
+    question_templates = {
+        'Gender': "Was this person {value}?",
+        'RealName': "Was this person named {value}?",
+        'Nationality': "Was this person from {value}?",
+        'BirthYear': "Was this person born in {value}?",
+        'Achievements': "Did this person achieve {value}?",
+        'Spouses': "Was this person married to {value}?"
+    }
 
+    # Use predefined templates for simple traits
+    if trait in question_templates:
+        return question_templates[trait].format(value=value)
 
-def generate_simple_question(trait_type, trait_value):
-    """Generate a question for simple traits."""
-    question_template = SIMPLE_TRAITS.get(trait_type)
-    if question_template:
-        return question_template.format(noun=trait_value)
-    return None
-
-
-def generate_complex_question(figure_name, trait_type, trait_value):
-    """Generate a dynamic question for complex traits using ChatGPT."""
-    prompt = f"Generate a yes/no question based on the following trait: {trait_type} = {trait_value}. The figure is {figure_name}. For example: Does this person have a notable achievement related to {trait_value}?"
-
+    # Use GPT for dynamic question generation if trait is more complex
     try:
+        prompt = f"Generate a yes/no question for a historical figure with the trait '{trait}' and value '{value}'."
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
-            messages=[{
-                "role": "system",
-                "content": "You are a helpful assistant that generates yes/no questions for a Vietnamese historical akinator-like guessing game."
-            }, {
-                "role": "user",
-                "content": prompt
-            }]
+            messages=[
+                {"role": "system",
+                 "content": "You are an assistant that generates yes/no questions for a historical guessing game."},
+                {"role": "user", "content": prompt}
+            ]
         )
         return response['choices'][0]['message']['content'].strip()
     except openai.error.OpenAIError as e:
-        print(f"Error generating question for {figure_name}: {e}")
-        return "Could not generate a question at the moment."
-
-
-def create_categories():
-    """Categorize the questions based on the columns in the database."""
-    categories = {}
-    list_of_column_names = ['Gender', 'Field', 'Position', 'Century', 'BirthYear', 'DeathYear', 'Nationality']
-    # Add more categories as per the dataset structure
-    categories['Personal Traits'] = ['Gender', 'Nationality', 'BirthYear', 'DeathYear']
-    categories['Professional Traits'] = ['Field', 'Position', 'Achievements']
-    categories['Historical Context'] = ['Century', 'PeriodOfActivity']
-    return categories
-
-
-def add_new_figure(questions_so_far, answers_so_far, figures):
-    """Allow the system to add a new figure to the database."""
-    print("What historical figure were you thinking about?")
-    new_figure_name = input()
-
-    # Create a new figure with default answers (to be adjusted later)
-    new_figure_answers = {str(i): 0.5 for i in range(len(questions_so_far))}
-
-    # Ask the user for specific answers about this new figure
-    for i, question in enumerate(questions_so_far):
-        print(f"Please provide an answer to the question: {question}")
-        answer = input("Answer (yes, probably yes, maybe, probably no, no): ").lower()
-        new_figure_answers[str(i)] = update_probability(answer, new_figure_answers[str(i)])
-
-    # Add new figure to figures list
-    new_figure = {
-        'HistoricalFigures': new_figure_name,
-        'answers': new_figure_answers
-    }
-    figures.append(new_figure)
-
-    # Save the new figure to the database
-    save_new_figure_to_db(new_figure_name, new_figure_answers)
-
-
-def save_new_figure_to_db(figure_name, answers):
-    """Save the new figure to the database."""
-    connection = get_db_connection()
-    cursor = connection.cursor()
-
-    # Insert the new figure into the database
-    answer_values = [answers[str(i)] for i in range(len(answers))]
-    query = f"INSERT INTO HistoricalFigures (HistoricalFigures, {', '.join([f'answer{i}' for i in range(len(answer_values))])}) VALUES ('{figure_name}', {', '.join(map(str, answer_values))})"
-
-    cursor.execute(query)
-    connection.commit()
-    cursor.close()
-    connection.close()
-    print(f"New figure '{figure_name}' added to the database.")
-
-
-def confirm_answer(probabilities, questions_so_far, answers_so_far, figures):
-    """Ask the user to confirm the guessed historical figure."""
-    sorted_probabilities = sorted(probabilities, key=lambda p: p['probability'], reverse=True)
-    highest_prob_figure = sorted_probabilities[0]
-
-    print(f"Did you think about {highest_prob_figure['name']}?")
-    confirmation = input("Please respond with: yes, no, or maybe: ").lower()
-
-    if confirmation == 'yes':
-        print(f"Great! You were thinking about {highest_prob_figure['name']}.")
-        return True
-    else:
-        print(f"Sorry, I will remove {highest_prob_figure['name']} from the possibilities.")
-        figures = [f for f in figures if f['HistoricalFigures'] != highest_prob_figure['name']]
-        return False
-
-
-def update_questions(questions_so_far, categories, answer, question_key):
-    """Update the question set based on the answers and remove irrelevant questions."""
-    category = find_category(categories, question_key)
-    if answer == 'yes' or answer == 'probably yes':
-        # Keep relevant questions
-        categories[category] = [q for q in categories[category] if q != question_key]
-    else:
-        # Remove irrelevant questions
-        categories[category] = [q for q in categories[category] if q == question_key]
-
-    return categories
-
-
-def find_category(categories, col_num):
-    """Find the category name based on the column number."""
-    for category, columns in categories.items():
-        if col_num in columns:
-            return category
-    return None
+        print(f"Error generating question with GPT: {e}")
+        # Fall back to a default question if GPT fails
+        return f"Does this person's {trait} relate to {value}?"
 
 
 def update_probability(answer, current_probability):
-    """Update probability based on the user’s answer."""
+    """
+    Update probability based on the user’s answer.
+    """
     if answer == 'yes':
         return 1
     elif answer == 'probably yes':
@@ -206,91 +112,3 @@ def update_probability(answer, current_probability):
         return 0
     else:
         return current_probability
-
-
-def update_figures_based_on_answer(figures, categories, question_column, answer):
-    """Update the list of figures based on the user's answer."""
-    expected_answer = 1 if answer in ['yes', 'probably yes'] else 0
-    updated_figures = []
-    for figure in figures:
-        # Default to 0.5 if answers key is missing or question_column is not found
-        figure_answer = figure.get('answers', {}).get(str(question_column), 0.5)
-        if figure_answer == expected_answer:
-            updated_figures.append(figure)
-    return updated_figures
-
-
-
-def partition_data(answers_so_far, dataset):
-    """Partition the dataset based on the answers given so far."""
-    true_data = []
-    false_data = []
-
-    for data in dataset:
-        match = True
-        for question_index, answer in zip(answers_so_far.keys(), answers_so_far.values()):
-            if data['answers'].get(str(question_index), 0.5) != answer:
-                match = False
-                break
-        if match:
-            true_data.append(data)
-        else:
-            false_data.append(data)
-
-    return true_data, false_data
-
-
-def calculate_probabilities(questions_so_far, answers_so_far, figures):
-    """Calculate the probability of each historical figure based on the user's answers."""
-    probabilities = []
-    for figure in figures:
-        figure_probability = 1.0
-        for question_index, answer in zip(questions_so_far, answers_so_far):
-            answer_prob = figure['answers'].get(str(question_index), 0.5)
-            figure_probability *= max(1 - abs(answer - answer_prob), 0.01)
-
-        probabilities.append({
-            'name': figure['HistoricalFigures'],
-            'probability': figure_probability
-        })
-
-    return probabilities
-
-
-def check_prob(probabilities):
-    """Check if the highest probability is high enough to confirm a guess."""
-    if len(probabilities) > 1:
-        highest_prob = probabilities[0]['probability']
-        second_highest_prob = probabilities[1]['probability']
-
-        # Update thresholds for early guesses
-        if highest_prob >= 0.7 or (highest_prob - second_highest_prob) >= 0.4:
-            return True
-    return False
-
-
-def delete_invalid_figures(probabilities, figures):
-    """Remove figures with low probability."""
-    min_probability = 0.0001
-    valid_figures = [figure for figure in probabilities if figure['probability'] >= min_probability]
-
-    # Remove invalid figures from the list of possible answers
-    figures[:] = [figure for figure in figures if figure['HistoricalFigures'] in [f['name'] for f in valid_figures]]
-
-
-def calculate_answer_probability(question_index, figure_answer, user_answer):
-    """Calculate the likelihood of a figure given a user's answer."""
-    if figure_answer == user_answer:
-        return 1
-    elif figure_answer == 0.5:
-        return 0.5
-    else:
-        return 0.25
-
-
-def delete_figure_from_list(figures, name):
-    """Remove a figure from the possible options."""
-    for figure in figures:
-        if figure['HistoricalFigures'] == name:
-            figures.remove(figure)
-            break
