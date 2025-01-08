@@ -1,73 +1,46 @@
-# main.py
-from Leaf import Leaf
-from Tree import Tree
-from utils import load_data, generate_question, update_probability
-from probability import calculate_probabilities, get_next_question
+from utils import load_data, generate_question
 
-def main():
-    figures = load_data()  # Load figures from the database
 
-    if not figures:
-        print("No data available to build the decision tree!")
-        return
+class Question:
+    def __init__(self, text, trait, value):
+        self.text = text
+        self.trait = trait
+        self.value = value
 
-    # Define the traits to use for questions
-    traits = ["Gender", "Nationality", "BirthYear", "Achievements", "Spouses", "RealName", 'HistoricalFigures']
+    def __str__(self):
+        return self.text
 
-    questions_so_far = []
-    answers_so_far = []
 
-    while True:
-        # Build the decision tree
-        tree = Tree(figures, traits)
-        decision_tree = tree.build_tree(figures)
+def getQuestion(trait, value):
+    question_text = generate_question(trait, value)
+    return Question(question_text, trait, value)
 
-        if isinstance(decision_tree, Leaf):
-            # If at a leaf, display the predictions
-            predictions = decision_tree.predictions
-            if predictions:
-                print("Guessing complete! Are you thinking of:")
-                for figure, count in predictions.items():
-                    print(f"- {figure} (Count: {count})")
+
+def game_simulation():
+    figures = load_data()
+
+    game_count = 1
+    game_data = []
+    for figure in figures:
+        game_questions = []
+
+        traits = ['Gender', 'Nationality', 'Achievements', 'BirthYear', 'Spouses']
+        for trait in traits:
+            value = figure[trait]
+            questions = generate_question(trait, value)
+
+            if isinstance(questions, list):
+                for question in questions:
+                    game_questions.append({"question": str(question), "trait": trait, "value": value})
             else:
-                print("Guessing complete! No predictions available.")
-            break
+                game_questions.append({"question": questions, "trait": trait, "value": value})
 
-        # Get the next question to ask
-        next_trait = get_next_question(traits, questions_so_far)
+        game_data.append({
+            "game_number": game_count,
+            "questions": game_questions,
+            "guess": f"Is this person {figure['HistoricalFigures']}?"
+        })
 
-        if not next_trait:
-            print("No more questions to ask!")
-            break
+        game_count += 1
 
-        # Use the first figure's data as an example to generate the question
-        example_value = figures[0][next_trait]
-        question = generate_question(next_trait, example_value)
-        print(question)
-
-        # Record the question
-        questions_so_far.append(next_trait)
-
-        # Get the user's answer
-        while True:
-            answer = input("Answer (yes, probably yes, maybe, probably no, no): ").strip().lower()
-            if answer in ['yes', 'probably yes', 'maybe', 'probably no', 'no']:
-                break
-            else:
-                print("Invalid input! Please enter a valid response (yes, probably yes, maybe, probably no, no).")
-
-        # Update probabilities
-        answers_so_far.append(update_probability(answer, 0.5))
-
-        # #Calculate probabilities
-        # probabilities = calculate_probabilities(questions_so_far, answers_so_far, figures)
-        # print("Updated probabilities:")
-        # for prob in probabilities:
-        #     print(f"{prob['name']}: {prob['probability']:.2f}")
-
-if __name__ == "__main__":
-    while True:
-        main()
-        new_game = input("Do you want to start a new game? (yes/no): ").strip().lower()
-        if new_game != 'yes':
-            break
+    return game_data

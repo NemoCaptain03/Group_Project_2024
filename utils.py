@@ -2,7 +2,7 @@
 import mysql.connector
 import openai
 
-openai.api_key = ""
+openai.api_key = "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"
 
 
 # Define database connection
@@ -12,11 +12,9 @@ def get_db_connection():
     """
     db_config = {
         'user': 'root',
-        'password': 'ducvandog900',
+        'password': '',
         'host': 'localhost',
-        'port': 3306,
-        'database': 'Historical_Figures',
-        'auth_plugin': 'mysql_native_password'
+        'database': 'huntoric_trick'
     }
     try:
         connection = mysql.connector.connect(**db_config)
@@ -37,9 +35,9 @@ def load_data():
     cursor = connection.cursor(dictionary=True)
     query = """
     SELECT hf.ID, hf.HistoricalFigures, hf.Gender, hf.RealName, hf.Hometown,
-           hf.Nationality, hf.PeriodOfActivity, hf.Century, hf.BirthYear,
-           GROUP_CONCAT(a.Achievement) AS Achievements,
-           GROUP_CONCAT(s.Name) AS Spouses
+       hf.Nationality, hf.PeriodOfActivity, hf.Century, hf.BirthYear,
+       GROUP_CONCAT(DISTINCT a.Achievement) AS Achievements,
+       GROUP_CONCAT(DISTINCT s.Name) AS Spouses
     FROM HistoricalFigures hf
     LEFT JOIN Achievements a ON a.HistoricalFigureID = hf.ID
     LEFT JOIN Spouses s ON s.HistoricalFigureID = hf.ID
@@ -67,10 +65,8 @@ def generate_question(trait, value):
     """
     question_templates = {
         'Gender': "Was this person {value}?",
-        'RealName': "Was this person named {value}?",
         'Nationality': "Was this person from {value}?",
         'BirthYear': "Was this person born in {value}?",
-        'Achievements': "Did this person achieve {value}?",
         'Spouses': "Was this person married to {value}?"
     }
 
@@ -80,12 +76,12 @@ def generate_question(trait, value):
 
     # Use GPT for dynamic question generation if trait is more complex
     try:
-        prompt = f"Generate a yes/no question for a historical figure with the trait '{trait}' and value '{value}'."
+        prompt = f"Generate a yes/no question for a historical figure with the trait '{trait}' and value '{value}', don't generate too long question, only 1 idea each."
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system",
-                 "content": "You are an assistant that generates yes/no questions for a historical guessing game."},
+                 "content": "You are a good assistant, generates yes/no questions for a historical guessing game."},
                 {"role": "user", "content": prompt}
             ]
         )
