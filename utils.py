@@ -1,27 +1,48 @@
-# utils.py
 import mysql.connector
 import openai
+from urllib.parse import urlparse
 
 openai.api_key = "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"
 
+url = urlparse(
+    'mysql://qjgkp24fkjcz9ikf:gkti0iyand9gpmb6@ofcmikjy9x4lroa2.cbetxkdyhwsb.us-east-1.rds.amazonaws.com:3306/q1lcr1t3oz9v2m5l')
 
-# Define database connection
+# Extract components from the parsed URL
+username = url.username
+password = url.password
+host = url.hostname
+port = url.port
+database = url.path[1:]  # Remove the leading slash from the path
+
+# Define the connection parameters
+db_config = {
+    'user': username,
+    'password': password,
+    'host': host,
+    'port': port,
+    'database': database
+}
+
+
+# Function to get a database connection
 def get_db_connection():
     """
-    Establish connection to the MySQL database.
+    Establish a connection to the MySQL database.
     """
-    db_config = {
-        'user': 'root',
-        'password': '',
-        'host': 'localhost',
-        'database': 'huntoric_trick'
-    }
     try:
         connection = mysql.connector.connect(**db_config)
-        return connection
+        return connection  # Return the connection if successful
     except mysql.connector.Error as err:
         print(f"Error: {err}")
-        return None
+        return None  # Return None if an error occurs
+
+
+# Test the connection
+connection = get_db_connection()
+if connection:
+    print("Connection successful!")
+else:
+    print("Connection failed!")
 
 
 def load_data():
@@ -38,9 +59,9 @@ def load_data():
        hf.Nationality, hf.PeriodOfActivity, hf.Century, hf.BirthYear,
        GROUP_CONCAT(DISTINCT a.Achievement) AS Achievements,
        GROUP_CONCAT(DISTINCT s.Name) AS Spouses
-    FROM HistoricalFigures hf
-    LEFT JOIN Achievements a ON a.HistoricalFigureID = hf.ID
-    LEFT JOIN Spouses s ON s.HistoricalFigureID = hf.ID
+    FROM historicalfigures hf
+    LEFT JOIN achievements a ON a.HistoricalFigureID = hf.ID
+    LEFT JOIN spouses s ON s.HistoricalFigureID = hf.ID
     GROUP BY hf.ID;
     """
 
